@@ -44,7 +44,8 @@ def subset_cells(
         subset_ind_ = adata.obs['_cell_index'][ind]
         n_samples = np.min((len(subset_ind_), cells_per_category))
         subset_ind = subset_ind + list(np.random.choice(subset_ind_, size=n_samples, replace=False))
-    print(len(subset_ind))
+    n_cells_subset = len(subset_ind)
+    print(f'Subsetted adata from {adata.shape[0]} to {n_cells_subset} cells')
     
     return adata[subset_ind, :].copy()
 
