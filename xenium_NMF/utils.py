@@ -1,24 +1,12 @@
-from typing import Optional
-from pyro.infer import SVI, Trace_ELBO
-import torch
-import numpy as np
-import pyro
-from pyro.infer import Predictive
-import pandas as pd
-import scanpy as sc
-import random
-from numpy.linalg import norm
-import scipy
-from scipy.sparse import csr_matrix
-from numpy import inner
-import matplotlib.pyplot as plt
-from contextlib import contextmanager
-import seaborn as sns
-import os,sys
 import matplotlib as mpl
-from matplotlib import rcParams
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 import random
+import scanpy as sc
+import seaborn as sns
 from scipy import sparse
+from scipy.optimize import linear_sum_assignment
 
 def G_a(mu, sd):
     # Converts mean and sd for Gamma distribution into parameter
