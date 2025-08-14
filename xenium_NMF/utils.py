@@ -478,6 +478,7 @@ def find_initial_values(adata,
     adata_neighbours = adata.copy()
     adata_neighbours.uns['mod'] = dict()
     adata_neighbours.uns['mod']['gene_names'] = np.array(adata.var.index)
+    adata_neighbours.obs_names_make_unique()
 
     ### Step 1.0 - select subset of data ###
     print(f'find_initial_values [1.0] - Selecting subset of data')
