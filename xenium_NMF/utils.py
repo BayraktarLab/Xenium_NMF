@@ -314,7 +314,7 @@ def compute_pcs_knn_umap(adata_subset,
     else:
         for tech in adata_subset.obs[tech_category_key].unique():
             adata_subset_tech = adata_subset[adata_subset.obs[tech_category_key] == tech,:].copy()
-            mu, std = compute_mu_std(adata_subset[adata_subset.obs[tech_category_key] == tech].X)
+            mu, std = compute_mu_std(adata_subset_tech.X)
             adata_subset[adata_subset.obs[tech_category_key] == tech].X = (
                 np.minimum((adata_subset[adata_subset.obs[tech_category_key] == tech].X - mu) / std, scale_max_value)
             )
