@@ -462,7 +462,8 @@ def find_stable_waypoint_gene_clusters(
 def find_initial_values(adata,
                         n_factors : int,
                         stratify_category_key : str,
-                        tech_category_key : str):
+                        tech_category_key : str,
+                        cells_per_category = 100000):
     """Compute initial factor loadings (W matrix) for spatial single-cell datasets using
     using waypoint-based gene clustering and KNN smoothing.
 
@@ -479,20 +480,19 @@ def find_initial_values(adata,
             e.g. "region" for anatomical region annotation of cells to ensure balanced sampling.
         tech_category_key (str): Column in `adata.obs` for technical category ("batch"),
             e.g. "section" to denote specific tissue section. Used to scale gene expression per batch.
+        cells_per_category (int): Number of cells to subsample to using `stratify_category_key`. Defaults
+            to 100000.
 
     Returns:
         dict: Dictionary mapping component names (e.g., 'cell_factors_w_cf') to NumPy arrays of shape
             `(n_cells, n_factors)` containing the initial factor loadings.
     """
     adata_neighbours = adata.copy()
-
-    cells_per_category=10**5
-
     adata_neighbours.uns['mod'] = dict()
-
     adata_neighbours.uns['mod']['gene_names'] = np.array(adata.var.index)
 
     ### Step 1.0 - select subset of data ###
+    print(f'find_initial_values [1.0] - Selecting subset of data')
     np.random.seed(1)
     adata_subset = subset_cells(
         adata_neighbours, cells_per_category=cells_per_category, 
@@ -501,6 +501,7 @@ def find_initial_values(adata,
     adata_neighbours = adata_subset.copy()
 
     ### Step 1.1 - compute PCs by applying standard workflow with a few exceptions ##
+    print(f'find_initial_values [1.1] - Computing PCs, KNN and UMAP')
     adata_subset = compute_pcs_knn_umap(adata_subset,
                                         tech_category_key=tech_category_key,
                                         scale_max_value=10,
@@ -508,6 +509,7 @@ def find_initial_values(adata,
                                         n_neighbors=25)
 
     ### Step 2.0 - cluster genes using PCs ###
+    print(f'find_initial_values [2.0] - Clustering genes into waypoints using KNN-graph in PC space...')
     adata_subset_g, n_factors = find_waypoint_gene_clusters(
         adata_subset,
         k='aver_norm',
@@ -523,6 +525,7 @@ def find_initial_values(adata,
     adata_subset_g.X = sparse.csr_matrix(adata_subset_g.X)
 
     ### Step 3.0 - compute initial values of cell loadings ###
+    print(f'find_initial_values [3.0] - Computing initial values of cell loadings using KNN-smoothing...')
     adata_subset = adata_subset[adata_neighbours.obs_names, :].copy()
     adata_subset = compute_w_initial_waypoint(
         adata_subset, adata_subset_g, n_factors,
