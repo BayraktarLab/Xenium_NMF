@@ -452,7 +452,6 @@ def find_initial_values(adata, n_factors):
     cells_per_category=10**5
     stratify_category_key='Area'
     tech_category_key= 'section'
-    plot_category_keys=['Area']
 
     adata_neighbours.uns['mod'] = dict()
 
@@ -467,11 +466,11 @@ def find_initial_values(adata, n_factors):
     adata_neighbours = adata_subset.copy()
 
     ### Step 1.1 - compute PCs by applying standard workflow with a few exceptions ##
-    adata_subset = compute_pcs_knn_umap(
-        adata_subset, 
-        tech_category_key=tech_category_key, plot_category_keys=plot_category_keys, 
-        scale_max_value=10, n_comps=n_factors, n_neighbors=25,
-    )
+    adata_subset = compute_pcs_knn_umap(adata_subset,
+                                        tech_category_key=tech_category_key,
+                                        scale_max_value=10,
+                                        n_comps=n_factors,
+                                        n_neighbors=25)
 
     ### Step 2.0 - cluster genes using PCs ###
     adata_subset_g, n_factors = find_waypoint_gene_clusters(
