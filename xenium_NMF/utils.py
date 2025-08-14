@@ -194,14 +194,26 @@ def find_waypoint_gene_clusters(
     return adata_neighbours_g, n_factors
 
 def compute_mu_std(X):
-        
-    mu = np.array(X.mean(0))
+    """Compute per-gene mean (mu) and standard deviation (std) for a gene expression
+    count matrix `X` of shape (n_cells, n_genes).
+
+    Args:
+        X (array-like or sparse matrix): Gene expression count matrix of shape (n_cells, n_genes)
+
+    Returns:
+        mu (np.ndarray, shape = (n_genes,)): Mean gene expression across cells.
+        std (np.ndarray, shape = (n_genes,)): Standard deviation for gene expression across cells, incl. pseudocount to avoid division-by-zero.
+    """
+    eps = 1e-8
+    # Cast to sparse matrix
+    X = sparse.csr_matrix(X, dtype=np.float64).copy()
+    mu = np.asarray(X.mean(axis=0)).ravel() # μ = E[X] (mean of each column)
     mu_sq = mu ** 2
-    X = X.copy()
-    X.data = X.data ** 2
-    sq_mu = np.array(X.mean(0))
-    std = np.sqrt(sq_mu - mu_sq) + 1e-8
-    
+    X_sq = X.copy()
+    X_sq.data **= 2
+    sq_mu = np.asarray(X_sq.mean(axis=0)).ravel() # E[X²] (mean of squared values in each column)
+    var = sq_mu - mu_sq # var = E[X²] - (E[X])²
+    std = np.sqrt(var) + eps # std = sqrt(var) + ε (prevents divide-by-zero)
     return mu, std
 
 def compute_w_initial_waypoint(
@@ -301,6 +313,7 @@ def compute_pcs_knn_umap(adata_subset,
         sc.pp.scale(adata_subset, max_value=scale_max_value)
     else:
         for tech in adata_subset.obs[tech_category_key].unique():
+            adata_subset_tech = adata_subset[adata_subset.obs[tech_category_key] == tech,:].copy()
             mu, std = compute_mu_std(adata_subset[adata_subset.obs[tech_category_key] == tech].X)
             adata_subset[adata_subset.obs[tech_category_key] == tech].X = (
                 np.minimum((adata_subset[adata_subset.obs[tech_category_key] == tech].X - mu) / std, scale_max_value)
