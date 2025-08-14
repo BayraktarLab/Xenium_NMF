@@ -487,7 +487,7 @@ def find_initial_values(adata,
     adata_neighbours.obs_names_make_unique()
 
     ### Step 1.0 - select subset of data ###
-    logging.info(f'find_initial_values : subset_cells(cells_per_category={cells_per_category}, stratify_category_key={stratify_category_key})')
+    logging.info(f'find_initial_values : subset_cells(cells_per_category="{cells_per_category}", stratify_category_key="{stratify_category_key}")')
     np.random.seed(1)
     adata_subset = subset_cells(adata_neighbours,
                                 cells_per_category=cells_per_category,
