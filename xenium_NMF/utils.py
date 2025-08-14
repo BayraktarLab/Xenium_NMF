@@ -1,3 +1,4 @@
+import logging
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
@@ -7,6 +8,10 @@ import scanpy as sc
 import seaborn as sns
 from scipy import sparse
 from scipy.optimize import linear_sum_assignment
+
+# Set up logger
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
 def G_a(mu, sd):
     # Converts mean and sd for Gamma distribution into parameter
@@ -475,22 +480,22 @@ def find_initial_values(adata,
         dict: Dictionary mapping component names (e.g., 'cell_factors_w_cf') to NumPy arrays of shape
             `(n_cells, n_factors)` containing the initial factor loadings.
     """
+    logging.info(f'find_initial_values : .obs_names_make_unique()')
     adata_neighbours = adata.copy()
     adata_neighbours.uns['mod'] = dict()
     adata_neighbours.uns['mod']['gene_names'] = np.array(adata.var.index)
     adata_neighbours.obs_names_make_unique()
 
     ### Step 1.0 - select subset of data ###
-    print(f'find_initial_values [1.0] - Selecting subset of data')
+    logging.info(f'find_initial_values : subset_cells(cells_per_category={cells_per_category}, stratify_category_key={stratify_category_key})')
     np.random.seed(1)
-    adata_subset = subset_cells(
-        adata_neighbours, cells_per_category=cells_per_category, 
-        stratify_category_key=stratify_category_key,
-    )
+    adata_subset = subset_cells(adata_neighbours,
+                                cells_per_category=cells_per_category,
+                                stratify_category_key=stratify_category_key)
     adata_neighbours = adata_subset.copy()
 
     ### Step 1.1 - compute PCs by applying standard workflow with a few exceptions ##
-    print(f'find_initial_values [1.1] - Computing PCs, KNN and UMAP')
+    logging.info(f'find_initial_values : compute_pcs_knn_umap() to computing PCs, KNN and UMAP')
     adata_subset = compute_pcs_knn_umap(adata_subset,
                                         tech_category_key=tech_category_key,
                                         scale_max_value=10,
@@ -498,30 +503,28 @@ def find_initial_values(adata,
                                         n_neighbors=25)
 
     ### Step 2.0 - cluster genes using PCs ###
-    print(f'find_initial_values [2.0] - Clustering genes into waypoints using KNN-graph in PC space...')
-    adata_subset_g, n_factors = find_waypoint_gene_clusters(
-        adata_subset,
-        k='aver_norm',
-        n_factors=n_factors,
-        margin_of_error=20,
-        n_neighbors=10,
-        labels_key=None, 
-        label_filter=None,
-        verbose=True,
-    )
-
+    logging.info(f'find_initial_values : find_waypoint_gene_clusters() to cluster genes into waypoints using KNN-graph in PC space')
+    adata_subset_g, n_factors = find_waypoint_gene_clusters(adata_subset,
+                                                            k='aver_norm',
+                                                            n_factors=n_factors,
+                                                            margin_of_error=20,
+                                                            n_neighbors=10,
+                                                            labels_key=None, 
+                                                            label_filter=None,
+                                                            verbose=True)
     adata_subset.X = sparse.csr_matrix(adata_subset.X)
     adata_subset_g.X = sparse.csr_matrix(adata_subset_g.X)
 
     ### Step 3.0 - compute initial values of cell loadings ###
-    print(f'find_initial_values [3.0] - Computing initial values of cell loadings using KNN-smoothing...')
+    logging.info(f'find_initial_values : compute_w_initial_waypoint() to compute initial values of cell loadings using KNN-smoothing')
     adata_subset = adata_subset[adata_neighbours.obs_names, :].copy()
-    adata_subset = compute_w_initial_waypoint(
-        adata_subset, adata_subset_g, n_factors,
-        scale=True, tech_category_key=tech_category_key,
-        use_x=True,
-        knn_smoothing=True
-    )
+    adata_subset = compute_w_initial_waypoint(adata_subset,
+                                              adata_subset_g,
+                                              n_factors,
+                                              scale=True,
+                                              tech_category_key=tech_category_key,
+                                              use_x=True,
+                                              knn_smoothing=True)
     adata_neighbours.uns['mod_init'] = adata_subset.uns['mod_init'].copy()
 
     adata_subset.obs = adata_subset.obs.copy()  # fragmentation warnings
