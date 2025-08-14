@@ -281,7 +281,7 @@ def compute_pcs_knn_umap(adata_subset,
 
     Args:
         adata_subset (anndata.AnnData): Input AnnData object containing gene expression data
-        tech_category_key (str or None, optional): Column in `.obs` defining technical/batch categories for per-group scaling.
+        tech_category_key (str or None, optional): Column in `.obs` defining technical (Xenium "batch") categories for per-group scaling.
         scale_max_value (int, optional): Maximum absolute value after scaling. Defaults to 10.
         n_comps (int, optional): Number of principal components. Defaults to 100.
         n_neighbors (int, optional):  Number of neighbors for KNN graph construction. Defaults to 15.
@@ -445,13 +445,34 @@ def find_stable_waypoint_gene_clusters(
     
     return adata_neighbours_g, n_factors
 
-def find_initial_values(adata, n_factors):
+def find_initial_values(adata,
+                        n_factors : int,
+                        stratify_category_key : str,
+                        tech_category_key : str):
+    """Compute initial factor loadings (W matrix) for spatial single-cell datasets using
+    using waypoint-based gene clustering and KNN smoothing.
 
+    Steps:
+    - 1.0 Select subset of cells
+    - 1.1 Compute principal components (PCs)
+    - 2.0 Cluster genes into waypoints using NN-graph in PC space
+    - 3.0 Compute initial values of cell loadings using KNN-smoothing
+
+    Args:
+        adata (anndata.AnnData): Input AnnData object containing gene expression data.
+        n_factors (int): Number of NMF factors to initialise.
+        stratify_category_key (str): Column in `adata.obs` used to stratify and balance cell subsampling,
+            e.g. "region" for anatomical region annotation of cells to ensure balanced sampling.
+        tech_category_key (str): Column in `adata.obs` for technical category ("batch"),
+            e.g. "section" to denote specific tissue section. Used to scale gene expression per batch.
+
+    Returns:
+        dict: Dictionary mapping component names (e.g., 'cell_factors_w_cf') to NumPy arrays of shape
+            `(n_cells, n_factors)` containing the initial factor loadings.
+    """
     adata_neighbours = adata.copy()
 
     cells_per_category=10**5
-    stratify_category_key='Area'
-    tech_category_key= 'section'
 
     adata_neighbours.uns['mod'] = dict()
 
