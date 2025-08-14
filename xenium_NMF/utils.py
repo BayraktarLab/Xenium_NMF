@@ -8,6 +8,8 @@ import scanpy as sc
 import seaborn as sns
 from scipy import sparse
 from scipy.optimize import linear_sum_assignment
+from cell2location.cluster_averages import compute_cluster_averages
+
 
 # Set up logger
 logger = logging.getLogger()
@@ -17,18 +19,16 @@ def G_a(mu, sd):
     # Converts mean and sd for Gamma distribution into parameter
     return mu**2/sd**2
 
+
 def G_b(mu, sd):
     # Converts mean and sd for Gamma distribution into beta parameter
     return mu/sd**2
 
 
 ### Step 1.0 - select subset of data ###
-def subset_cells(
-    adata,
-    cells_per_category=5000,
-    stratify_category_key='sample',
-):
-    
+def subset_cells(adata,
+                 cells_per_category=5000,
+                 stratify_category_key='sample'):
     adata.obs['_cell_index'] = np.arange(adata.n_obs)
     subset_ind = list()
     
@@ -44,7 +44,6 @@ def subset_cells(
 
 ### Step 2.0 - cluster genes using PCs ###
 def rescale_distribution(dist, n_factors):
-
         dist = (
         dist 
         * (dist > np.quantile(dist, 0.01, axis=1).reshape((n_factors, 1))) 
@@ -102,21 +101,19 @@ def max_min_sampling(data, n_waypoints):
 
     return waypoints
 
-def find_waypoint_gene_clusters(
-    adata_neighbours,
-    k='aver_norm',
-    n_factors=300,
-    margin_of_error=20,
-    n_neighbors=15,
-    labels_key=None, 
-    label_filter=None,
-    verbose=True,
-):
-    
+
+def find_waypoint_gene_clusters(adata_neighbours,
+                                k='aver_norm',
+                                n_factors=300,
+                                margin_of_error=20,
+                                n_neighbors=15,
+                                labels_key=None, 
+                                label_filter=None,
+                                verbose=True):
     init_n_factors = n_factors
     
     if labels_key is not None:
-        from cell2location.cluster_averages import compute_cluster_averages
+        # Compute per-gene representation: cluster averages if labels provided
         aver = compute_cluster_averages(adata_neighbours, labels_key, use_raw=False)
         if label_filter is not None:
             aver = aver.loc[:, label_filter]
@@ -128,28 +125,30 @@ def find_waypoint_gene_clusters(
                 )
             ).T
     else:
-        # Use PCs
+        # Use PCs to represent genes
         aver = pd.DataFrame(
             adata_neighbours.varm['PCs'],
             index=adata_neighbours.var_names,
             columns=[f'PC_{i+1}' for i in range(adata_neighbours.varm['PCs'].shape[1])],
         )
+        logging.info(f'find_waypoint_gene_clusters : XXX')
         gene_rates = {'aver': aver}
         for k in ['aver']:
             gene_rates[k+'_norm'] = (gene_rates[k].T / gene_rates[k].abs().max(1)).T
-
+    if verbose:
+        print(gene_rates)
     
-
-    # compute KNN for genes and cluster genes by bursting rates at meta-cells
+    # Compute KNN for genes and cluster genes by bursting rates at meta-cells
     adata_neighbours_g = adata_neighbours[0:10,:].copy().T
-    # adata_neighbours_g = adata_neighbours_g[adata_neighbours.uns['mod']['gene_names'], :]
-
     adata_neighbours_g.obsm[k] = gene_rates[k].values
     adata_neighbours_g.obs['total_counts'] = np.log10(np.array(adata_neighbours_g.X.mean(1)).flatten())
-
-    sc.pp.neighbors(adata_neighbours_g, n_neighbors=n_neighbors, 
-                        use_rep=k, metric='correlation')
-    sc.tl.umap(adata_neighbours_g, min_dist = 0.1, spread = 2.5)
+    sc.pp.neighbors(adata_neighbours_g,
+                    n_neighbors=n_neighbors,
+                    use_rep=k,
+                    metric='correlation')
+    sc.tl.umap(adata_neighbours_g,
+               min_dist = 0.1,
+               spread = 2.5)
 
     X_pd = pd.DataFrame(
             adata_neighbours_g.obsm[k],
@@ -159,7 +158,10 @@ def find_waypoint_gene_clusters(
             index=adata_neighbours_g.obs_names,
     )
 
-    waypoints = max_min_sampling(data=X_pd, n_waypoints=n_factors)
+    # Select waypoints using max–min sampling
+    waypoints = max_min_sampling(data=X_pd,
+                                 n_waypoints=n_factors)
+    # Iteratively adjust number of waypoints if outside margin_of_error
     total_steps = 0
     while (abs(len(waypoints) - n_factors) > margin_of_error) and (total_steps <= 10):
         if verbose:
@@ -169,22 +171,15 @@ def find_waypoint_gene_clusters(
         total_steps += 1
     n_factors = len(waypoints)
 
-    # plot
+    # Annotate waypoints in the gene-level AnnData
     adata_neighbours_g.obs["is_waypoint"] = adata_neighbours_g.obs_names.isin(waypoints)
     adata_neighbours_g.obs["is_waypoint_size"] = np.array(
         [10 if x else 1 for x in adata_neighbours_g.obs["is_waypoint"]]
     )
     adata_neighbours_g.obs["is_waypoint"] = adata_neighbours_g.obs["is_waypoint"].astype("category")
     
-#     if verbose:
-#         with mpl.rc_context({'figure.figsize': [6, 6]}):
-#             sns.scatterplot(x = adata_neighbours_g.obsm["X_umap"][:,0], 
-#                         y = adata_neighbours_g.obsm["X_umap"][:,1], 
-#                         hue=adata_neighbours_g.obs['is_waypoint'], 
-#                         s=adata_neighbours_g.obs['is_waypoint_size']);
-#             plt.show();
-    
     return adata_neighbours_g, n_factors
+
 
 def compute_mu_std(X):
     """Compute per-gene mean (mu) and standard deviation (std) for a gene expression
@@ -209,39 +204,21 @@ def compute_mu_std(X):
     std = np.sqrt(var) + eps # std = sqrt(var) + ε (prevents divide-by-zero)
     return mu, std
 
-def compute_w_initial_waypoint(
-    adata_neighbours,
-    adata_neighbours_g,
-    n_factors,
-    k='aver_norm',
-    scale=False, tech_category_key=None,
-    use_x=True, layer=None,
-    knn_smoothing=False,
-    scale_max_value=10,
-):
-    
+
+def compute_w_initial_waypoint(adata_neighbours,
+                               adata_neighbours_g,
+                               n_factors,
+                               k='aver_norm',
+                               scale=False, tech_category_key=None,
+                               use_x=True, layer=None,
+                               knn_smoothing=False,
+                               scale_max_value=10):
     if use_x and layer is None:
         X = adata_neighbours[:, adata_neighbours_g.obs_names].X.copy()
     elif layer is not None:
         X = adata_neighbours[:, adata_neighbours_g.obs_names].layers[layer].copy()
     
-    
-    
     waypoints = adata_neighbours_g.obs_names[adata_neighbours_g.obs["is_waypoint"]]
-    
-#     # Scale with no HVG selection
-#     if scale:
-#         if tech_category_key is None:
-#             print(X)
-#             mu, std = compute_mu_std(X)
-#             X = X.multiply(1 / std).minimum(scale_max_value)
-#         else:
-#             for tech in adata_subset.obs[tech_category_key].unique():
-#                 mu, std = compute_mu_std(X[adata_subset.obs[tech_category_key] == tech, :])
-#                 X[adata_subset.obs[tech_category_key] == tech, :] = (
-#                     X[adata_subset.obs[tech_category_key] == tech, :]
-#                     .multiply(1 / std).minimum(scale_max_value)
-#                 )
     
     w_init_dict = dict()
     for i, k in enumerate([k]):
@@ -268,7 +245,6 @@ def compute_w_initial_waypoint(
     adata_neighbours.uns['mod_init'] = dict()
     adata_neighbours.uns['mod_init']['initial_values'] = {
         'w_init': w_init_dict,
-
     }
     for i, k in enumerate(['aver']):
         plt.hist(w_init_dict[f'cell_factors_w_cf'].values.flatten(), bins=500);
@@ -276,14 +252,14 @@ def compute_w_initial_waypoint(
 
     return adata_neighbours
 
+
 ### Step 1.1 - compute PCs by apply standard workflow with a few exceptions ##
 def compute_pcs_knn_umap(adata_subset,
                          tech_category_key=None,
                          scale_max_value=10,
                          n_comps=100,
-                         n_neighbors=15
-                         ):
-    """Perform PCA, KNN graph construction, and UMAP embedding on AnnData object
+                         n_neighbors=15):
+    """Perform PCA, KNN graph construction, and UMAP embedding on AnnData object.
 
     Args:
         adata_subset (anndata.AnnData): Input AnnData object containing gene expression data
@@ -300,10 +276,12 @@ def compute_pcs_knn_umap(adata_subset,
 
     # No normalisation by total count
     sc.pp.log1p(adata_subset)
+    logging.info(f'compute_pcs_knn_umap : sc.pp.log1p')
 
     # Scale with no HVG selection
     if tech_category_key is None:
         sc.pp.scale(adata_subset, max_value=scale_max_value)
+        logging.info(f'compute_pcs_knn_umap : sc.pp.scale')
     else:
         for tech in adata_subset.obs[tech_category_key].unique():
             adata_subset_tech = adata_subset[adata_subset.obs[tech_category_key] == tech,:].copy()
@@ -311,12 +289,14 @@ def compute_pcs_knn_umap(adata_subset,
             adata_subset[adata_subset.obs[tech_category_key] == tech].X = (
                 np.minimum((adata_subset[adata_subset.obs[tech_category_key] == tech].X - mu) / std, scale_max_value)
             )
+            logging.info(f'compute_pcs_knn_umap : compute_mu_std(tech_category_key="{tech_category_key}")')
 
     # Calculate PCA
     sc.tl.pca(adata_subset,
               svd_solver='arpack',
               n_comps=n_comps,
               use_highly_variable=False)
+    logging.info(f'compute_pcs_knn_umap : sc.tl.pca(n_comps="{n_comps}")')
 
     # Plot PCs to confirm that PC1 is indeed linked to total count
     plt.hist2d(adata_subset.obsm['X_pca'][:, 0].flatten(),
@@ -333,11 +313,13 @@ def compute_pcs_knn_umap(adata_subset,
 
     # Compute KNN and UMAP to see how well this represents the dataset
     sc.pp.neighbors(adata_subset, n_neighbors=n_neighbors)
+    logging.info(f'compute_pcs_knn_umap : sc.pp.neighbors()')
     sc.tl.umap(adata_subset, min_dist = 0.2, spread = 0.8)
+    logging.info(f'compute_pcs_knn_umap : sc.pp.sc.tl.umap()')
 
     return adata_subset
 
-from scipy.optimize import linear_sum_assignment
+
 def align_plot_stability(fac1, fac2, name1, name2, align=True, return_aligned=False,
                          title=''):
         r"""Align columns between two np.ndarrays using scipy.optimize.linear_sum_assignment,
@@ -371,19 +353,18 @@ def align_plot_stability(fac1, fac2, name1, name2, align=True, return_aligned=Fa
 
         if return_aligned:
             return corr12, linear_sum_assignment(2 - corr12)[1]
-        
-def find_stable_waypoint_gene_clusters(
-    adata_neighbours_,
-    k='aver_norm',
-    n_factors=300,
-    n_neighbors=20,
-    labels_key='cell_type',
-    n_repeats=5,
-    cluster_max_cutoff=0.2,
-    margin_of_error=20,
-    bootstrap_p=0.9,
-    verbose=True,
-):
+
+
+def find_stable_waypoint_gene_clusters(adata_neighbours_,
+                                       k='aver_norm',
+                                       n_factors=300,
+                                       n_neighbors=20,
+                                       labels_key='cell_type',
+                                       n_repeats=5,
+                                       cluster_max_cutoff=0.2,
+                                       margin_of_error=20,
+                                       bootstrap_p=0.9,
+                                       verbose=True):
     np.random.seed(1)
     adata_list = list()
     for i in range(n_repeats):
@@ -451,6 +432,7 @@ def find_stable_waypoint_gene_clusters(
         plt.show();
     
     return adata_neighbours_g, n_factors
+
 
 def find_initial_values(adata,
                         n_factors : int,
@@ -539,4 +521,3 @@ def find_initial_values(adata,
     init_vals = {k: v.loc[adata_neighbours.obs_names, :].values.astype('float32') for k, v in init_vals.items()}
     
     return init_vals
-    
