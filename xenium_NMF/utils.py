@@ -8,7 +8,6 @@ import scanpy as sc
 import seaborn as sns
 from scipy import sparse
 from scipy.optimize import linear_sum_assignment
-from cell2location.cluster_averages import compute_cluster_averages
 
 
 # Set up logger
@@ -114,6 +113,7 @@ def find_waypoint_gene_clusters(adata_neighbours,
     
     if labels_key is not None:
         # Compute per-gene representation: cluster averages if labels provided
+        from cell2location.cluster_averages import compute_cluster_averages
         aver = compute_cluster_averages(adata_neighbours, labels_key, use_raw=False)
         if label_filter is not None:
             aver = aver.loc[:, label_filter]
@@ -141,7 +141,7 @@ def find_waypoint_gene_clusters(adata_neighbours,
     # Compute KNN for genes and cluster genes by bursting rates at meta-cells
     adata_neighbours_g = adata_neighbours[0:10,:].copy().T
     adata_neighbours_g.obsm[k] = gene_rates[k].values
-    adata_neighbours_g.obs['total_counts'] = np.log10(np.array(adata_neighbours_g.X.mean(1)).flatten())
+    adata_neighbours_g.obs['total_counts'] = np.log10(np.array(adata_neighbours_g.X.mean(1)).flatten() + 1e-8) # Add pseudocount
     sc.pp.neighbors(adata_neighbours_g,
                     n_neighbors=n_neighbors,
                     use_rep=k,
@@ -276,7 +276,7 @@ def compute_pcs_knn_umap(adata_subset,
 
     # No normalisation by total count
     sc.pp.log1p(adata_subset)
-    logging.info(f'compute_pcs_knn_umap : sc.pp.log1p')
+    logging.info(f'compute_pcs_knn_umap : sc.pp.log1p()')
 
     # Scale with no HVG selection
     if tech_category_key is None:
@@ -289,14 +289,14 @@ def compute_pcs_knn_umap(adata_subset,
             adata_subset[adata_subset.obs[tech_category_key] == tech].X = (
                 np.minimum((adata_subset[adata_subset.obs[tech_category_key] == tech].X - mu) / std, scale_max_value)
             )
-            logging.info(f'compute_pcs_knn_umap : compute_mu_std(tech_category_key="{tech_category_key}")')
+            logging.info(f'compute_pcs_knn_umap : compute_mu_std(tech_category_key="{tech}")')
 
     # Calculate PCA
     sc.tl.pca(adata_subset,
               svd_solver='arpack',
               n_comps=n_comps,
               use_highly_variable=False)
-    logging.info(f'compute_pcs_knn_umap : sc.tl.pca(n_comps="{n_comps}")')
+    logging.info(f'compute_pcs_knn_umap : sc.tl.pca(n_comps={n_comps})')
 
     # Plot PCs to confirm that PC1 is indeed linked to total count
     plt.hist2d(adata_subset.obsm['X_pca'][:, 0].flatten(),
@@ -469,7 +469,7 @@ def find_initial_values(adata,
     adata_neighbours.obs_names_make_unique()
 
     ### Step 1.0 - select subset of data ###
-    logging.info(f'find_initial_values : subset_cells(cells_per_category="{cells_per_category}", stratify_category_key="{stratify_category_key}")')
+    logging.info(f'find_initial_values : subset_cells(cells_per_category={cells_per_category}, stratify_category_key="{stratify_category_key}")')
     np.random.seed(1)
     adata_subset = subset_cells(adata_neighbours,
                                 cells_per_category=cells_per_category,
