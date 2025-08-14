@@ -271,15 +271,30 @@ def compute_w_initial_waypoint(
     return adata_neighbours
 
 ### Step 1.1 - compute PCs by apply standard workflow with a few exceptions ##
-def compute_pcs_knn_umap(
-    adata_subset, 
-    tech_category_key=None, plot_category_keys=list(), 
-    scale_max_value=10, n_comps=100, n_neighbors=15,
-):
+def compute_pcs_knn_umap(adata_subset,
+                         tech_category_key=None,
+                         scale_max_value=10,
+                         n_comps=100,
+                         n_neighbors=15
+                         ):
+    """Perform PCA, KNN graph construction, and UMAP embedding on AnnData object
+
+    Args:
+        adata_subset (anndata.AnnData): Input AnnData object containing gene expression data
+        tech_category_key (str or None, optional): Column in `.obs` defining technical/batch categories for per-group scaling.
+        scale_max_value (int, optional): Maximum absolute value after scaling. Defaults to 10.
+        n_comps (int, optional): Number of principal components. Defaults to 100.
+        n_neighbors (int, optional):  Number of neighbors for KNN graph construction. Defaults to 15.
+
+    Returns:
+        anndata.AnnData: Modified AnnData object with updated PCA, neighbor graph, and UMAP embedding.
+    """    
     adata_subset.obs['total_counts'] = np.array(adata_subset.X.sum(1)).flatten()
     adata_subset.layers['counts'] = adata_subset.X.copy()
+
     # No normalisation by total count
     sc.pp.log1p(adata_subset)
+
     # Scale with no HVG selection
     if tech_category_key is None:
         sc.pp.scale(adata_subset, max_value=scale_max_value)
@@ -289,13 +304,14 @@ def compute_pcs_knn_umap(
             adata_subset[adata_subset.obs[tech_category_key] == tech].X = (
                 np.minimum((adata_subset[adata_subset.obs[tech_category_key] == tech].X - mu) / std, scale_max_value)
             )
-    # A lot of PC dimensions
-    sc.tl.pca(adata_subset, svd_solver='arpack', n_comps=n_comps, use_highly_variable=False)
+
+    # Calculate PCA
+    sc.tl.pca(adata_subset,
+              svd_solver='arpack',
+              n_comps=n_comps,
+              use_highly_variable=False)
+
     # Plot PCs to confirm that PC1 is indeed linked to total count
-    # sc.pl.pca(adata_subset, color=['total_counts'],
-    #           components=['1,2', '2,3', '4,5'],
-    #           color_map = 'RdPu', ncols = 3, legend_loc='on data',
-    #           legend_fontsize=10)
     plt.hist2d(adata_subset.obsm['X_pca'][:, 0].flatten(),
                adata_subset.obs['total_counts'].values.flatten(),
                bins=200,
@@ -308,14 +324,10 @@ def compute_pcs_knn_umap(
     adata_subset.obsm['X_pca'] = adata_subset.obsm['X_pca'][:, 1:]
     adata_subset.varm['PCs'] = adata_subset.varm['PCs'][:, 1:]
 
-    # compute KNN and UMAP to see how well this represents the dataset
+    # Compute KNN and UMAP to see how well this represents the dataset
     sc.pp.neighbors(adata_subset, n_neighbors=n_neighbors)
     sc.tl.umap(adata_subset, min_dist = 0.2, spread = 0.8)
 
-#     # Plot UMAP
-#     sc.pl.umap(adata_subset, color=[stratify_category_key] + plot_category_keys,
-#                color_map = 'RdPu', ncols = 3, #legend_loc='on data',
-#                legend_fontsize=10)
     return adata_subset
 
 from scipy.optimize import linear_sum_assignment
