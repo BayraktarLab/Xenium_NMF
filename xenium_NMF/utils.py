@@ -2,6 +2,7 @@ import logging
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
+import os
 import pandas as pd
 import random
 import scanpy as sc
@@ -208,6 +209,7 @@ def compute_mu_std(X):
 def compute_w_initial_waypoint(adata_neighbours,
                                adata_neighbours_g,
                                n_factors,
+                               fig_dir='',
                                k='aver_norm',
                                scale=False, tech_category_key=None,
                                use_x=True, layer=None,
@@ -246,15 +248,20 @@ def compute_w_initial_waypoint(adata_neighbours,
     adata_neighbours.uns['mod_init']['initial_values'] = {
         'w_init': w_init_dict,
     }
+
     for i, k in enumerate(['aver']):
         plt.hist(w_init_dict[f'cell_factors_w_cf'].values.flatten(), bins=500);
-        plt.close();
+        plt.xlabel('Cell loading');
+        plt.ylabel('Frequency');
+        plt.savefig(os.path.join(fig_dir, 'histogram_init_cell_loadings.pdf'))
+        plt.close()
 
     return adata_neighbours
 
 
 ### Step 1.1 - compute PCs by apply standard workflow with a few exceptions ##
 def compute_pcs_knn_umap(adata_subset,
+                         fig_dir='',
                          tech_category_key=None,
                          scale_max_value=10,
                          n_comps=100,
@@ -263,6 +270,7 @@ def compute_pcs_knn_umap(adata_subset,
 
     Args:
         adata_subset (anndata.AnnData): Input AnnData object containing gene expression data
+        fig_dir (str) : Directory to write quality control figures to.
         tech_category_key (str or None, optional): Column in `.obs` defining technical (Xenium "batch") categories for per-group scaling.
         scale_max_value (int, optional): Maximum absolute value after scaling. Defaults to 10.
         n_comps (int, optional): Number of principal components. Defaults to 100.
@@ -305,6 +313,7 @@ def compute_pcs_knn_umap(adata_subset,
                norm=mpl.colors.LogNorm());
     plt.xlabel('PC 1');
     plt.ylabel('Total RNA count');
+    plt.savefig(os.path.join(fig_dir, 'NMF_init_PC1_total_counts.pdf'))
     plt.close()
 
     # Remove PC1
@@ -356,8 +365,9 @@ def align_plot_stability(fac1, fac2, name1, name2, align=True, return_aligned=Fa
 
 
 def find_stable_waypoint_gene_clusters(adata_neighbours_,
-                                       k='aver_norm',
                                        n_factors=300,
+                                       fig_dir='',
+                                       k='aver_norm',
                                        n_neighbors=20,
                                        labels_key='cell_type',
                                        n_repeats=5,
@@ -403,6 +413,7 @@ def find_stable_waypoint_gene_clusters(adata_neighbours_,
             align=True, return_aligned=True
         )
         if verbose:
+            plt.savefig(os.path.join(fig_dir, 'align_plot_stability.pdf'))
             plt.close()
         else:
             plt.clear()
@@ -410,6 +421,7 @@ def find_stable_waypoint_gene_clusters(adata_neighbours_,
         cluster_max = np.array([cluster_max, corr01.max(1)]).mean(0)
 
     plt.hist(cluster_max, bins=20);
+    plt.savefig(os.path.join(fig_dir, 'cluster_max.pdf'));
     plt.close();
 
     waypoints = adata_list[0].obs_names[adata_list[0].obs["is_waypoint"].values.astype(bool)]
@@ -425,11 +437,12 @@ def find_stable_waypoint_gene_clusters(adata_neighbours_,
     adata_neighbours_g.obs["is_waypoint"] = adata_neighbours_g.obs["is_waypoint"].astype("category")
 
     with mpl.rc_context({'figure.figsize': [6, 6]}):
-        sns.scatterplot(adata_neighbours_g.obsm["X_umap"][:,0], 
-                    adata_neighbours_g.obsm["X_umap"][:,1], 
-                    hue=adata_neighbours_g.obs['is_waypoint'], 
-                    s=adata_neighbours_g.obs['is_waypoint_size']);
-        plt.close();
+        sns.scatterplot(adata_neighbours_g.obsm["X_umap"][:,0],
+                        adata_neighbours_g.obsm["X_umap"][:,1], 
+                        hue=adata_neighbours_g.obs['is_waypoint'], 
+                        s=adata_neighbours_g.obs['is_waypoint_size']);
+        plt.savefig(os.path.join(fig_dir, 'scatter_X_umap_waypoint.pdf'))
+        plt.close()
     
     return adata_neighbours_g, n_factors
 
@@ -438,6 +451,7 @@ def find_initial_values(adata,
                         n_factors : int,
                         stratify_category_key : str,
                         tech_category_key : str,
+                        fig_dir='',
                         cells_per_category = 100000):
     """Compute initial factor loadings (W matrix) for spatial single-cell datasets using
     using waypoint-based gene clustering and KNN smoothing.
@@ -455,6 +469,7 @@ def find_initial_values(adata,
             e.g. "region" for anatomical region annotation of cells to ensure balanced sampling.
         tech_category_key (str): Column in `adata.obs` for technical category ("batch"),
             e.g. "section" to denote specific tissue section. Used to scale gene expression per batch.
+        fig_dir (str) : Directory to write quality control figures to.
         cells_per_category (int): Number of cells to subsample to using `stratify_category_key`. Defaults
             to 100000.
 
@@ -482,7 +497,8 @@ def find_initial_values(adata,
                                         tech_category_key=tech_category_key,
                                         scale_max_value=10,
                                         n_comps=n_factors,
-                                        n_neighbors=25)
+                                        n_neighbors=25,
+                                        fig_dir=fig_dir)
 
     ### Step 2.0 - cluster genes using PCs ###
     logging.info(f'find_initial_values : find_waypoint_gene_clusters() to cluster genes into waypoints using KNN-graph in PC space')
@@ -506,7 +522,8 @@ def find_initial_values(adata,
                                               scale=True,
                                               tech_category_key=tech_category_key,
                                               use_x=True,
-                                              knn_smoothing=True)
+                                              knn_smoothing=True,
+                                              fig_dir=fig_dir)
     adata_neighbours.uns['mod_init'] = adata_subset.uns['mod_init'].copy()
 
     adata_subset.obs = adata_subset.obs.copy()  # fragmentation warnings
