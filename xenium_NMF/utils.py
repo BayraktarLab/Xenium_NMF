@@ -248,7 +248,7 @@ def compute_w_initial_waypoint(adata_neighbours,
     }
     for i, k in enumerate(['aver']):
         plt.hist(w_init_dict[f'cell_factors_w_cf'].values.flatten(), bins=500);
-        plt.show();
+        plt.close();
 
     return adata_neighbours
 
@@ -305,7 +305,7 @@ def compute_pcs_knn_umap(adata_subset,
                norm=mpl.colors.LogNorm());
     plt.xlabel('PC 1');
     plt.ylabel('Total RNA count');
-    plt.show()
+    plt.close()
 
     # Remove PC1
     adata_subset.obsm['X_pca'] = adata_subset.obsm['X_pca'][:, 1:]
@@ -403,14 +403,14 @@ def find_stable_waypoint_gene_clusters(adata_neighbours_,
             align=True, return_aligned=True
         )
         if verbose:
-            plt.show()
+            plt.close()
         else:
             plt.clear()
             plt.close()
         cluster_max = np.array([cluster_max, corr01.max(1)]).mean(0)
 
     plt.hist(cluster_max, bins=20);
-    plt.show();
+    plt.close();
 
     waypoints = adata_list[0].obs_names[adata_list[0].obs["is_waypoint"].values.astype(bool)]
     waypoints = waypoints[cluster_max > cluster_max_cutoff]
@@ -429,7 +429,7 @@ def find_stable_waypoint_gene_clusters(adata_neighbours_,
                     adata_neighbours_g.obsm["X_umap"][:,1], 
                     hue=adata_neighbours_g.obs['is_waypoint'], 
                     s=adata_neighbours_g.obs['is_waypoint_size']);
-        plt.show();
+        plt.close();
     
     return adata_neighbours_g, n_factors
 
